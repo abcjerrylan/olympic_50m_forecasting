@@ -1,0 +1,8 @@
+{
+  "best_epoch": 10,
+  "best_score": 0.11794844642281532,
+  "epochs_ran": 10,
+  "parameter_count": 66677,
+  "device": "cpu",
+  "seed": 42
+}

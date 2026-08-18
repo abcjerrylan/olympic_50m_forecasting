@@ -1,0 +1,3 @@
+target_year,sex,complete_27,heats_joined,semifinals_joined,heat_fallback,semifinal_fallback,medal_fallback
+2024,Female,True,16,8,False,False,False
+2024,Male,True,16,8,False,False,False
