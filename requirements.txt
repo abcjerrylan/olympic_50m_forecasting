@@ -1,4 +1,4 @@
-torch>=2.6
+torch>=2.13
 pandas>=2.2
 numpy>=2.0
 scikit-learn>=1.5
@@ -8,4 +8,3 @@ matplotlib>=3.9
 seaborn>=0.13
 tqdm>=4.66
 pytest>=8.0
-

@@ -25,9 +25,44 @@ def set_deterministic_seed(seed: int) -> None:
 
 
 def resolve_device(requested: str = "auto") -> torch.device:
+    requested = requested.strip().lower()
     if requested == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device(requested)
+        return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device(requested)
+    if device.type == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA training was requested, but this PyTorch build cannot use CUDA. "
+                f"torch={torch.__version__}, torch.version.cuda={torch.version.cuda}. "
+                "Install the official CUDA build, then verify with: "
+                "python -c \"import torch; print(torch.cuda.is_available())\""
+            )
+        index = device.index if device.index is not None else 0
+        if index >= torch.cuda.device_count():
+            raise RuntimeError(
+                f"Requested cuda:{index}, but only {torch.cuda.device_count()} CUDA device(s) are visible"
+            )
+        return torch.device(f"cuda:{index}")
+    return device
+
+
+def device_information(device: torch.device) -> dict[str, Any]:
+    information: dict[str, Any] = {
+        "device": str(device),
+        "torch_version": torch.__version__,
+        "torch_cuda_build": torch.version.cuda,
+        "cuda_available": torch.cuda.is_available(),
+    }
+    if device.type == "cuda":
+        index = device.index if device.index is not None else 0
+        properties = torch.cuda.get_device_properties(index)
+        information.update({
+            "cuda_device_index": index,
+            "cuda_device_name": torch.cuda.get_device_name(index),
+            "cuda_compute_capability": f"{properties.major}.{properties.minor}",
+            "cuda_total_memory_mb": round(properties.total_memory / 1024**2, 1),
+        })
+    return information
 
 
 def _example_loss(model, example: dict[str, Any], config: dict[str, Any]):
@@ -71,7 +106,26 @@ def train_model(
     seed = int(config.get("seed", 42))
     set_deterministic_seed(seed)
     device = resolve_device(str(config.get("device", "auto")))
+    if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = bool(config.get("allow_tf32", True))
+        torch.backends.cudnn.allow_tf32 = bool(config.get("allow_tf32", True))
+        torch.set_float32_matmul_precision("high")
+        torch.cuda.set_device(device)
+        torch.cuda.reset_peak_memory_stats(device)
+    device_info = device_information(device)
+    print(
+        f"Compute device: {device_info['device']} | torch {device_info['torch_version']} | "
+        f"CUDA build {device_info['torch_cuda_build']}"
+    )
+    if device.type == "cuda":
+        print(
+            f"GPU: {device_info['cuda_device_name']} | compute capability "
+            f"{device_info['cuda_compute_capability']} | "
+            f"memory {device_info['cuda_total_memory_mb']:.0f} MiB"
+        )
     model.to(device)
+    if next(model.parameters()).device.type != device.type:
+        raise RuntimeError(f"Model failed to move to requested device {device}")
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=float(config.get("learning_rate", 1e-3)),
         weight_decay=float(config.get("weight_decay", 1e-4)),
@@ -79,6 +133,7 @@ def train_model(
     max_epochs = int(config.get("max_epochs", 500))
     patience = int(config.get("early_stopping_patience", 40))
     clip = float(config.get("gradient_clip_norm", 1.0))
+    log_every = max(1, int(config.get("log_every", 10)))
     rng = random.Random(seed)
     best_score = float("inf")
     best_epoch = 0
@@ -102,6 +157,15 @@ def train_model(
         validation_loss = evaluate_examples(model, validation_examples, device, config)
         score = validation_loss if np.isfinite(validation_loss) else train_loss
         history.append({"epoch": epoch, "train_loss": train_loss, "validation_loss": validation_loss})
+        if epoch == 1 or epoch % log_every == 0 or epoch == max_epochs:
+            validation_text = f"{validation_loss:.6f}" if np.isfinite(validation_loss) else "n/a"
+            memory_text = ""
+            if device.type == "cuda":
+                memory_text = f" | peak CUDA {torch.cuda.max_memory_allocated(device) / 1024**2:.1f} MiB"
+            print(
+                f"Epoch {epoch:4d}/{max_epochs} | train {train_loss:.6f} | "
+                f"validation {validation_text}{memory_text}"
+            )
         if score < best_score - 1e-8:
             best_score = score
             best_epoch = epoch
@@ -116,6 +180,7 @@ def train_model(
                 "parameter_count": sum(p.numel() for p in model.parameters() if p.requires_grad),
                 "training_targets": sorted({int(e["target_year"]) for e in train_examples}),
                 "validation_targets": sorted({int(e["target_year"]) for e in validation_examples}),
+                "device_info": device_info,
             }, output_dir / "best_model.pt")
         else:
             remaining_patience -= 1
@@ -124,10 +189,15 @@ def train_model(
 
     pd.DataFrame(history).to_csv(output_dir / "training_history.csv", index=False)
     with (output_dir / "run_summary.json").open("w", encoding="utf-8") as handle:
+        peak_memory_mb = (
+            round(torch.cuda.max_memory_allocated(device) / 1024**2, 1)
+            if device.type == "cuda" else 0.0
+        )
         json.dump({
             "best_epoch": best_epoch, "best_score": best_score, "epochs_ran": len(history),
             "parameter_count": sum(p.numel() for p in model.parameters() if p.requires_grad),
-            "device": str(device), "seed": seed,
+            "device": str(device), "device_info": device_info,
+            "peak_cuda_memory_mb": peak_memory_mb, "seed": seed,
         }, handle, indent=2)
     checkpoint = torch.load(output_dir / "best_model.pt", map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state"])
@@ -200,4 +270,3 @@ def latest_world_baseline(world: pd.DataFrame, target_year: int) -> pd.DataFrame
                     "training_year_max": latest_year,
                 })
     return pd.DataFrame(rows)
-

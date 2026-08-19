@@ -1,10 +1,12 @@
 seed: 42
-device: auto
+device: cuda
+allow_tf32: true
 optimizer: AdamW
 learning_rate: 0.001
 weight_decay: 0.0001
 max_epochs: 500
 early_stopping_patience: 40
+log_every: 10
 gradient_clip_norm: 1.0
 dropout: 0.10
 min_context_editions: 3
@@ -16,4 +18,3 @@ plausible_time_min: 18.0
 plausible_time_max: 90.0
 recover_time_from_raw: false
 locked_test_year: 2024
-

@@ -31,6 +31,7 @@ def parse_args():
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "outputs" / "runs" / "walk_forward")
     parser.add_argument("--max-epochs", type=int)
     parser.add_argument("--patience", type=int)
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda", "cuda:0"])
     return parser.parse_args()
 
 
@@ -41,6 +42,8 @@ def main():
         config["max_epochs"] = args.max_epochs
     if args.patience is not None:
         config["early_stopping_patience"] = args.patience
+    if args.device is not None:
+        config["device"] = args.device
     world, _ = load_results_workbook(args.world_championships, "world_championships")
     olympics, _ = load_results_workbook(args.olympics, "olympics")
     targets, target_quality = build_olympic_targets(olympics)

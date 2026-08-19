@@ -4,6 +4,7 @@ First working implementation of the DeepSets + causal GRU + Query Decoder
 specification in `README_Olympic_50m_Freestyle_DeepSets_GRU.md`.
 
 中文模型规范见 `README_Olympic_50m_Freestyle_DeepSets_GRU_zh-CN.md`。
+中文代码原理与使用指南见 `README_代码说明与使用指南_zh-CN.md`。
 
 ## Data
 

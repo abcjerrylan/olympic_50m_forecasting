@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument("--world-championships", type=Path, default=default_world)
     parser.add_argument("--target-year", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda", "cuda:0"])
     return parser.parse_args()
 
 
@@ -30,6 +31,8 @@ def main():
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     scaler = FoldScaler.from_dict(checkpoint["scaler"])
     config = checkpoint["config"]
+    if args.device is not None:
+        config["device"] = args.device
     model = OlympicForecastModel(dropout=float(config["dropout"]))
     model.load_state_dict(checkpoint["model_state"])
     device = resolve_device(str(config.get("device", "auto")))
@@ -51,4 +54,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

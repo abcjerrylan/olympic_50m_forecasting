@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--validation-year", type=int)
     parser.add_argument("--max-epochs", type=int)
     parser.add_argument("--patience", type=int)
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda", "cuda:0"])
     parser.add_argument("--no-gru", action="store_true")
     parser.add_argument("--mean-pooling", action="store_true")
     parser.add_argument("--no-count-features", action="store_true")
@@ -39,6 +40,8 @@ def main():
         config["max_epochs"] = args.max_epochs
     if args.patience is not None:
         config["early_stopping_patience"] = args.patience
+    if args.device is not None:
+        config["device"] = args.device
     validation_year = args.validation_year or int(config["validation_year"])
     config["validation_year"] = validation_year
     world, quality = load_results_workbook(
@@ -78,4 +81,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
